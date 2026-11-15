@@ -11,6 +11,7 @@ import { G, TEAM, pushEvent } from './state.js';
 import { makeRng } from './rng.js';
 import { PALETTE } from './palette.js';
 import { buildMap, yawToward } from './map.js';
+import { eyeHeight, bodyHeight } from './physics.js';
 import { createInput } from './input.js';
 import { initFx, updateFx, placeBombVisual } from './fx.js';
 import { initMatch, startMatch, updateRounds, handleEvent as roundsEvent } from './rounds.js';
@@ -88,6 +89,7 @@ function dispatchEvent(e) {
       case 'explosion': sfx.explosion(d < 30); break;
       case 'flash': if (d < 22) sfx.flash(); break;
       case 'beep': if (d < 32) sfx.beep(e.final); break;
+      case 'throwIt': if (d < 18) sfx.throwIt(); break;
       case 'buy': sfx.buy(); break;
       case 'denied': sfx.denied(); break;
       default: break;
@@ -164,11 +166,48 @@ function settle(steps) {
 }
 
 // --- screenshot staging ------------------------------------------------------------------
+// Put a primary in a fighter's hands (the staged scenes arm their actors alike).
+function armFighter(f, id) {
+  f.weapons.primary = newWeapon(id);
+  f.slot = 'primary';
+}
+
 function givePlayer(id) {
-  player.weapons.primary = newWeapon(id);
-  player.slot = 'primary';
+  armFighter(player, id);
   player.money = 4150;
   player.armor = 100;
+}
+
+// Pose a fighter on a mark, standing still and facing a point.
+function pinFighter(f, x, z, faceX, faceZ) {
+  f.pos.x = x;
+  f.pos.z = z;
+  f.vel.x = 0;
+  f.vel.z = 0;
+  f.yaw = yawToward(x, z, faceX, faceZ);
+  f.pitch = 0;
+}
+
+// Direction from a shooter's eye to a point at frac of the victim's body height —
+// the geometry tryFire fires along, so a staged shot lands where it is aimed.
+function aimAt(shooter, victim, frac) {
+  const sy = shooter.pos.y + eyeHeight(shooter) - 0.08;
+  const ty = victim.pos.y + bodyHeight(victim) * frac;
+  return { x: victim.pos.x - shooter.pos.x, y: ty - sy, z: victim.pos.z - shooter.pos.z };
+}
+
+// Fire a short burst from one fighter into another through the game's own firing
+// code, re-aiming at the victim's chest before every shot, until the victim is
+// down, is at or under stopHp, or the burst runs out. Steps pass between shots,
+// so the burst honours the weapon's rate of fire and the victims' brains keep
+// moving and fighting back while it lands.
+function burst(shooter, victim, stopHp, maxShots = 6) {
+  for (let i = 0; i < maxShots; i += 1) {
+    if (!shooter.alive || !victim.alive || victim.hp <= stopHp) return;
+    const d = aimAt(shooter, victim, 0.62);
+    tryFire(shooter, d.x, d.y, d.z);
+    settle(7);
+  }
 }
 
 function stageShot(name) {
@@ -189,40 +228,92 @@ function stageShot(name) {
     player.grenades = { frag: 0, flash: 0, smoke: 0 };
     hud.setBuy(true);
     hud.hideBanner();
-  } else if (name === 'cover' || name === 'fight') {
+  } else if (name === 'cover') {
     givePlayer('vk7');
     G.phase = 'live';
     G.roundTimer = 87;
     G.wins = [3, 2];
     G.round = 6;
-    const close = name === 'fight';
-    player.pos.x = close ? -6 : -20;
-    player.pos.z = close ? 0.5 : 23;
+    player.pos.x = -20;
+    player.pos.z = 23;
     const foes = G.fighters.filter((f) => f.team === TEAM.WARDENS);
-    foes[0].pos.x = close ? -4.5 : -16;
-    foes[0].pos.z = close ? -8.5 : -6;
-    foes[1].pos.x = close ? 3 : -25;
-    foes[1].pos.z = close ? -13 : -12;
+    foes[0].pos.x = -16;
+    foes[0].pos.z = -6;
+    foes[1].pos.x = -25;
+    foes[1].pos.z = -12;
     foes[0].yaw = yawToward(foes[0].pos.x, foes[0].pos.z, player.pos.x, player.pos.z);
     const mates = G.fighters.filter((f) => f.brain && f.team === TEAM.BREAKERS);
-    mates[0].pos.x = close ? -10.5 : -22.5;
-    mates[0].pos.z = close ? 3 : 13;
-    mates[1].pos.x = close ? 5 : -16.5;
-    mates[1].pos.z = close ? 7 : 15;
+    mates[0].pos.x = -22.5;
+    mates[0].pos.z = 13;
+    mates[1].pos.x = -16.5;
+    mates[1].pos.z = 15;
     player.yaw = yawToward(player.pos.x, player.pos.z, foes[0].pos.x, foes[0].pos.z);
-    settle(close ? 18 : 16);
+    settle(16);
     hud.hideBanner();
-    if (close) {
-      // One aimed shot as the last act, so the frozen frame carries a live tracer,
-      // muzzle flash and hitmarker from the game's own firing code.
-      const e = foes[0].alive ? foes[0] : foes[1];
-      player.yaw = yawToward(player.pos.x, player.pos.z, e.pos.x, e.pos.z);
-      player.pitch = 0.02;
-      const dx = e.pos.x - player.pos.x;
-      const dz = e.pos.z - player.pos.z;
-      const d = Math.hypot(dx, dz) || 1;
-      tryFire(player, dx / d, 0.01, dz / d);
-      drainEvents();
+  } else if (name === 'fight') {
+    givePlayer('vk7');
+    G.phase = 'live';
+    G.roundTimer = 87;
+    G.wins = [3, 2];
+    G.round = 6;
+    const foes = G.fighters.filter((f) => f.team === TEAM.WARDENS);
+    const mates = G.fighters.filter((f) => f.brain && f.team === TEAM.BREAKERS && !f.isPlayer);
+    // A close-range exchange in the mid corridor. The actors are posed on marks
+    // around the player, but everything that happens next is fought by the game's
+    // own firing and damage code: two bursts trade kills into the killfeed, a
+    // third leaves the Warden in the player's sights one shot from down, and the
+    // player's answering burst is the last act, so the frozen frame carries the
+    // populated killfeed, the kill hitmarker, the impact burst and the falling
+    // body — the muzzle flash itself is allowed to burn off first (see below),
+    // because at this range its light blows out the middle of the frame.
+    for (const f of [mates[0], mates[1], foes[0], foes[1], foes[2]]) armFighter(f, 'vk7');
+    pinFighter(foes[1], -9.3, -7.6, -8.6, -3.4);
+    pinFighter(mates[0], -8.6, -3.4, -9.3, -7.6);
+    pinFighter(mates[1], -2.6, -6.8, -1.8, -11.2);
+    pinFighter(foes[2], -1.8, -11.2, -2.6, -6.8);
+    pinFighter(foes[0], -4.9, -8.2, -4.6, -3);
+    pinFighter(player, -4.6, -3, -4.9, -8.2);
+    settle(10);
+    burst(mates[0], foes[1], 0);
+    burst(foes[2], mates[1], 0);
+    burst(mates[0], foes[0], 34);
+    hud.hideBanner();
+    // The exchange is spent: for the last beat every other fighter is caught
+    // mid-reload (empty magazines — their brains take the hint and hold fire),
+    // so the only muzzle flash in the frozen frame is the player's own.
+    for (const f of G.fighters) {
+      if (f !== player && f.alive && f.weapons.primary) f.weapons.primary.mag = 0;
+    }
+    let target = [foes[0], foes[2], foes[1], foes[3], foes[4]].find((f) => f.alive);
+    if (target) {
+      pinFighter(target, -4.9, -8.2, player.pos.x, player.pos.z);
+      pinFighter(player, -4.6, -3, target.pos.x, target.pos.z);
+      player.pitch = 0.01;
+      settle(2);
+      if (!target.alive) {
+        // The player's own brain finished the target during the settle; put the
+        // next standing Warden on the mark instead and fire without stepping,
+        // so the camera — already facing the mark — keeps the frame.
+        target = foes.find((f) => f.alive);
+        if (target) pinFighter(target, -4.9, -8.2, player.pos.x, player.pos.z);
+      }
+      for (let i = 0; i < 4 && target && target.alive; i += 1) {
+        player.yaw = yawToward(player.pos.x, player.pos.z, target.pos.x, target.pos.z);
+        const d = aimAt(player, target, 0.62);
+        tryFire(player, d.x, d.y, d.z);
+        drainEvents();
+        if (target.alive && i < 3) settle(7);
+      }
+      // Let the muzzle flash (0.045 s) burn off before the freeze, so the frame
+      // stays readable: the player holds fire (nextShotAt pushed out — its brain
+      // cannot spoil the pause with a fresh flash) and the body is then re-posed
+      // on its mark for the one step that lets the camera adopt the pose again.
+      // The kill hitmarker (0.22 s) and the impact burst outlast the pause.
+      player.nextShotAt = G.time + 0.5;
+      settle(3);
+      pinFighter(player, -4.6, -3, target.pos.x, target.pos.z);
+      player.pitch = 0.01;
+      settle(1);
     }
   } else if (name === 'plant') {
     givePlayer('vk7');
