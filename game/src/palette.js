@@ -26,5 +26,4 @@ export const PALETTE = {
   charge: 0xd23b2e,
 };
 
-export const TEAM_NAMES = ['Breakers', 'Wardens'];
 export const TEAM_COLORS = [PALETTE.breakers, PALETTE.wardens];

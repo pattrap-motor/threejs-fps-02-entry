@@ -36,15 +36,12 @@ function buildBotMesh(team) {
     group.add(m);
     return m;
   };
+  // Legs hang from a hip pivot at 0.82 so the walk swing rotates them at the hip:
+  // each leg's geometry is pre-translated to span from the pivot down to the ground.
   const legGeo = new THREE.BoxGeometry(0.17, 0.82, 0.21);
-  const legL = add(legGeo, mat(PALETTE.trousers), -0.12, 0.41, 0);
-  const legR = add(legGeo, mat(PALETTE.trousers), 0.12, 0.41, 0);
-  legL.geometry = legGeo.clone();
-  legL.geometry.translate(0, -0.41, 0);
-  legL.position.y = 0.82;
-  legR.geometry = legGeo.clone();
-  legR.geometry.translate(0, -0.41, 0);
-  legR.position.y = 0.82;
+  legGeo.translate(0, -0.41, 0);
+  const legL = add(legGeo, mat(PALETTE.trousers), -0.12, 0.82, 0);
+  const legR = add(legGeo, mat(PALETTE.trousers), 0.12, 0.82, 0);
   const torso = add(new THREE.BoxGeometry(0.54, 0.64, 0.3), mat(color), 0, 1.13, 0);
   add(new THREE.BoxGeometry(0.56, 0.2, 0.32), mat(dark), 0, 0.92, 0);
   const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.07, 0.02),

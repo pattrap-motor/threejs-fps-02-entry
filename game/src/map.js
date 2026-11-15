@@ -168,7 +168,7 @@ export function buildMap(scene) {
   });
   scene.add(new THREE.Mesh(skyGeo, skyMat));
 
-  const hemi = new THREE.HemisphereLight(0x93aed6, 0x4a4238, 1.15);
+  const hemi = new THREE.HemisphereLight(0x93aed6, 0x4a4238, 1.32);
   scene.add(hemi);
   const sun = new THREE.DirectionalLight(PALETTE.sun, 3.0);
   sun.position.set(-52, 34, -30);

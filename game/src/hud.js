@@ -3,7 +3,6 @@
 // the start/pause/match overlays. It reads the shared state G once per frame and only
 // touches the DOM when a value actually changed.
 import { G, TEAM } from './state.js';
-import { TEAM_NAMES } from './palette.js';
 import { BUY_CATALOG, playerBuy } from './rounds.js';
 import { currentWeapon, spreadFor } from './weapons.js';
 import { colliders } from './physics.js';
@@ -17,7 +16,7 @@ function fmtTime(s) {
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
 }
 
-export function createHud({ onPlay, onRestart }) {
+export function createHud({ onPlay, onRestart, sites }) {
   const el = {
     crosshair: $('crosshair'), hitmarker: $('hitmarker'),
     scoreB: $('score-b'), scoreW: $('score-w'), timer: $('timer'),
@@ -200,10 +199,10 @@ export function createHud({ onPlay, onRestart }) {
       if (c.minY > 0.5 || c.maxY < 1.2) continue;
       mm.fillRect(sx(c.minX), sz(c.minZ), Math.max(1.5, sx(c.maxX) - sx(c.minX)), Math.max(1.5, sz(c.maxZ) - sz(c.minZ)));
     }
-    for (const site of [{ id: 'A', x: -30, z: -16 }, { id: 'B', x: 30, z: -16 }]) {
+    for (const site of sites) {
       mm.strokeStyle = '#f5a83d';
       mm.beginPath();
-      mm.arc(sx(site.x), sz(site.z), 7 * (W / 92), 0, Math.PI * 2);
+      mm.arc(sx(site.x), sz(site.z), site.r * (W / 92), 0, Math.PI * 2);
       mm.stroke();
       mm.fillStyle = '#f5a83d';
       mm.font = '700 9px system-ui';
@@ -330,7 +329,7 @@ export function createHud({ onPlay, onRestart }) {
     } else if (G.phase === 'live') {
       if (G.bomb.carrier === p) {
         objective = 'You carry the charge — plant it at the Depot (A) or the Crane Pad (B).';
-        const inSite = [-30, 30].some((x) => Math.hypot(p.pos.x - x, p.pos.z + 16) < 7);
+        const inSite = sites.some((s) => Math.hypot(p.pos.x - s.x, p.pos.z - s.z) < s.r);
         prompt = inSite ? 'Hold E — plant the charge' : '';
       } else if (G.bomb.state === 'dropped') {
         objective = 'The charge is down — recover it!';

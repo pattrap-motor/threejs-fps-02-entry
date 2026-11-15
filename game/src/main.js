@@ -34,7 +34,7 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.22;
+renderer.toneMappingExposure = 1.3;
 document.getElementById('game').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -53,6 +53,7 @@ const view = createPlayerView(camera);
 let hud;
 const input = createInput(renderer.domElement, onLockChange);
 hud = createHud({
+  sites: map.sites,
   onPlay: () => input.requestLock(),
   onRestart: () => {
     startMatch();
@@ -88,6 +89,7 @@ function dispatchEvent(e) {
       case 'flash': if (d < 22) sfx.flash(); break;
       case 'beep': if (d < 32) sfx.beep(e.final); break;
       case 'buy': sfx.buy(); break;
+      case 'denied': sfx.denied(); break;
       default: break;
     }
   } else if (e.type === 'hitmark') {

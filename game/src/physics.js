@@ -62,27 +62,47 @@ export function moveBody(f, dt) {
   f.pos.z = Math.max(-33.4, Math.min(33.4, f.pos.z));
 }
 
-// Slab test: distance along the ray to a box, or -1 for a miss.
-function rayBox(ox, oy, oz, dx, dy, dz, c) {
+// Slab test: distance along the ray to a box, or -1 for a miss. Written with plain
+// scalars — this runs for every collider on every shot and sight line, so it must
+// not allocate.
+function rayBox(ox, oy, oz, dx, dy, dz, minX, minY, minZ, maxX, maxY, maxZ) {
   let tmin = 0;
   let tmax = Infinity;
-  const o = [ox, oy, oz];
-  const d = [dx, dy, dz];
-  const lo = [c.minX, c.minY, c.minZ];
-  const hi = [c.maxX, c.maxY, c.maxZ];
-  for (let i = 0; i < 3; i += 1) {
-    if (Math.abs(d[i]) < 1e-9) {
-      if (o[i] < lo[i] || o[i] > hi[i]) return -1;
-    } else {
-      let t1 = (lo[i] - o[i]) / d[i];
-      let t2 = (hi[i] - o[i]) / d[i];
-      if (t1 > t2) { const t = t1; t1 = t2; t2 = t; }
-      tmin = Math.max(tmin, t1);
-      tmax = Math.min(tmax, t2);
-      if (tmin > tmax) return -1;
-    }
+  if (Math.abs(dx) < 1e-9) {
+    if (ox < minX || ox > maxX) return -1;
+  } else {
+    let t1 = (minX - ox) / dx;
+    let t2 = (maxX - ox) / dx;
+    if (t1 > t2) { const t = t1; t1 = t2; t2 = t; }
+    tmin = Math.max(tmin, t1);
+    tmax = Math.min(tmax, t2);
+    if (tmin > tmax) return -1;
+  }
+  if (Math.abs(dy) < 1e-9) {
+    if (oy < minY || oy > maxY) return -1;
+  } else {
+    let t1 = (minY - oy) / dy;
+    let t2 = (maxY - oy) / dy;
+    if (t1 > t2) { const t = t1; t1 = t2; t2 = t; }
+    tmin = Math.max(tmin, t1);
+    tmax = Math.min(tmax, t2);
+    if (tmin > tmax) return -1;
+  }
+  if (Math.abs(dz) < 1e-9) {
+    if (oz < minZ || oz > maxZ) return -1;
+  } else {
+    let t1 = (minZ - oz) / dz;
+    let t2 = (maxZ - oz) / dz;
+    if (t1 > t2) { const t = t1; t1 = t2; t2 = t; }
+    tmin = Math.max(tmin, t1);
+    tmax = Math.min(tmax, t2);
+    if (tmin > tmax) return -1;
   }
   return tmin;
+}
+
+function rayCollider(ox, oy, oz, dx, dy, dz, c) {
+  return rayBox(ox, oy, oz, dx, dy, dz, c.minX, c.minY, c.minZ, c.maxX, c.maxY, c.maxZ);
 }
 
 function raySphere(ox, oy, oz, dx, dy, dz, cx, cy, cz, r) {
@@ -124,7 +144,7 @@ export function losClear(ax, ay, az, bx, by, bz) {
   if (dist < 1e-6) return true;
   const inv = 1 / dist;
   for (const c of colliders) {
-    const t = rayBox(ax, ay, az, dx * inv, dy * inv, dz * inv, c);
+    const t = rayCollider(ax, ay, az, dx * inv, dy * inv, dz * inv, c);
     if (t > 0.01 && t < dist - 0.01) return false;
   }
   return !smokeBlocks(ax, ay, az, bx, by, bz);
@@ -137,7 +157,7 @@ export function rayHit(ox, oy, oz, dx, dy, dz, maxDist, shooter) {
   let hitFighter = null;
   let part = null;
   for (const c of colliders) {
-    const t = rayBox(ox, oy, oz, dx, dy, dz, c);
+    const t = rayCollider(ox, oy, oz, dx, dy, dz, c);
     if (t > 0 && t < best) {
       best = t;
       hitFighter = null;
@@ -147,11 +167,9 @@ export function rayHit(ox, oy, oz, dx, dy, dz, maxDist, shooter) {
   for (const f of G.fighters) {
     if (!f.alive || f === shooter) continue;
     const h = bodyHeight(f);
-    const body = {
-      minX: f.pos.x - 0.34, minY: f.pos.y, minZ: f.pos.z - 0.34,
-      maxX: f.pos.x + 0.34, maxY: f.pos.y + h - 0.22, maxZ: f.pos.z + 0.34,
-    };
-    const tb = rayBox(ox, oy, oz, dx, dy, dz, body);
+    const tb = rayBox(ox, oy, oz, dx, dy, dz,
+      f.pos.x - 0.34, f.pos.y, f.pos.z - 0.34,
+      f.pos.x + 0.34, f.pos.y + h - 0.22, f.pos.z + 0.34);
     if (tb > 0 && tb < best) {
       best = tb;
       hitFighter = f;

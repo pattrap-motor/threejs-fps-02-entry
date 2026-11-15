@@ -150,16 +150,22 @@ export function playerBuy(id) {
   const item = BUY_CATALOG.find((c) => c.id === id);
   if (!item) return false;
   const p = G.player;
-  if (p.money < item.price) return false;
+  // A refused purchase buzzes: not enough money, armour already full, or the
+  // grenade slot already at its cap.
+  const denied = () => {
+    pushEvent('sound', { name: 'denied', x: p.pos.x, z: p.pos.z });
+    return false;
+  };
+  if (p.money < item.price) return denied();
   if (item.kind === 'weapon') {
     p.weapons.primary = newWeapon(id);
     p.slot = 'primary';
   } else if (item.kind === 'armor') {
-    if (p.armor >= 100) return false;
+    if (p.armor >= 100) return denied();
     p.armor = 100;
   } else {
     const cap = id === 'smoke' ? 1 : 2;
-    if (p.grenades[id] >= cap) return false;
+    if (p.grenades[id] >= cap) return denied();
     p.grenades[id] += 1;
   }
   p.money -= item.price;
