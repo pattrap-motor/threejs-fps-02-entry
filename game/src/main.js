@@ -3,9 +3,18 @@
 // simulation are drained once per frame to the round director, the HUD and the audio.
 //
 // Modes: plain play (click for pointer lock); ?demo=1 lets a bot brain drive the
-// player's body for an attract match; ?shot=cover|buy|fight|plant&seed=N stages a
-// deterministic scene with the game's own systems, settles it, freezes it and sets
-// window.__shotReady for the maker's screenshots.
+// player's body for an attract match; ?shot=cover|buy|fight|plant|defuse&seed=N
+// stages a deterministic scene with the game's own systems, settles it, freezes
+// it and sets window.__shotReady for the maker's screenshots.
+//
+// The modules, one job each: state (the single shared state G), map (Kestrel
+// Yard: geometry, colliders, nav graph, hold points), physics (movement
+// collision and raycasts), weapons (the firing and damage model every fighter
+// shares), bots (fighter meshes and the bot brains: perception, team plans,
+// plant, retake and defuse), player (the human controller and viewmodel),
+// rounds (the match director: phases, economy, the charge's channels), fx
+// (pooled tracers, particles and smoke), hud (the 2D interface), audio
+// (procedural WebAudio), input, rng (one seeded stream) and palette.
 import * as THREE from 'three';
 import { G, TEAM, pushEvent } from './state.js';
 import { makeRng } from './rng.js';
@@ -315,6 +324,91 @@ function stageShot(name) {
       player.pitch = 0.01;
       settle(1);
     }
+  } else if (name === 'defuse') {
+    // A 1v1 clutch on the Crane Pad, staged backwards from the frozen frame:
+    // the charge is planted at B, the last Warden is crouched on it with the
+    // defuse channel past halfway, and the player — the last Breaker standing —
+    // holds the south-east angle with the defuser in the crosshair and under
+    // nine seconds on the bomb clock. The channel bar, the danger timer and
+    // the objective line in the frame are the HUD reading live state, exactly
+    // as in a real retake.
+    givePlayer('vk7');
+    const foes = G.fighters.filter((f) => f.team === TEAM.WARDENS);
+    const mates = G.fighters.filter((f) => f.brain && f.team === TEAM.BREAKERS && !f.isPlayer);
+    const defuser = foes[0];
+    // The retake is fought first: the defuser-to-be clears the Breaker bots on
+    // the pad's approaches and the player clears the other Wardens, every shot
+    // through tryFire and applyDamage — the fallen around the site in the
+    // frozen frame are real kills with real death times, not props. Weapons
+    // only fire in a live round, so each exchange is fought inside a short
+    // live window with the round clock pinned at 999: too short for the
+    // carrier to plant (its channel needs 3 s in one stretch), for a victim
+    // to answer inside its reaction time, or for either elimination check to
+    // trip — a Warden and the player are always left standing. The kill spots
+    // all sit outside both site radii, so nobody drifts into a plant.
+    G.phaseT = 999; // the buy clock never runs out between windows
+    G.roundTimer = 999;
+    const stageKill = (shooter, victim, x, z, sx, sz) => {
+      for (let tries = 0; tries < 3 && victim.alive; tries += 1) {
+        pinFighter(victim, x, z, sx, sz);
+        pinFighter(shooter, sx, sz, x, z);
+        armFighter(shooter, 'vk7');
+        G.phase = 'live';
+        burst(shooter, victim, 0);
+        G.phase = 'buy';
+      }
+    };
+    const mateSpots = [[28.5, -21], [24, -24], [-2, -8], [-20, -24]];
+    mates.forEach((mate, i) => {
+      const [x, z] = mateSpots[i];
+      stageKill(defuser, mate, x, z, x + 3.4, z + 2.6);
+    });
+    const foeSpots = [[23, -22], [0, -26], [-30, -24], [38, -6]];
+    foes.slice(1).forEach((foe, i) => {
+      const [x, z] = foeSpots[i];
+      stageKill(player, foe, x, z, x - 3.2, z - 2.8);
+    });
+    // Let the retake's killfeed rows age out (they live 4.5 s of game time);
+    // the corpses stay where they fell.
+    settle(330);
+    // The planted scene, set the way the plant scene sets it — with the
+    // defuse channel already past halfway. That preset is the one staging
+    // shortcut: the defuser's own brain takes the channel from here, crouches
+    // on the charge and keeps working it for as long as nobody is in its face,
+    // and the round director keeps accumulating it step by step.
+    G.wins = [6, 4];
+    G.round = 11;
+    G.phase = 'planted';
+    G.bombTimer = 8.6;
+    G.bomb.state = 'planted';
+    G.bomb.site = 'B';
+    G.bomb.x = 29.2;
+    G.bomb.z = -14.6;
+    G.bomb.carrier = null;
+    G.bomb.defuse = 3.4;
+    placeBombVisual(G.bomb.x, G.bomb.z);
+    // The defuser kneels between the charge and the player, facing the charge:
+    // its back is to the player's angle, so its perception never picks the
+    // player up and its brain stays on the defuse instead of turning to fight.
+    pinFighter(defuser, 30.1, -15.5, G.bomb.x, G.bomb.z);
+    armFighter(defuser, 'vk7');
+    defuser.crouch = 1;
+    defuser.crouchTarget = 1;
+    pinFighter(player, 32, -22.5, defuser.pos.x, defuser.pos.z);
+    player.pitch = -0.06;
+    // Hold fire through the settle: the player's brain has the defuser in view
+    // and would open up inside its reaction time. The frozen frame is the
+    // moment before the shot, not after it — the same hold the fight scene
+    // uses while its muzzle flash burns off.
+    player.nextShotAt = G.time + 5;
+    settle(12);
+    // The player's brain walked it off its mark toward its hold point during
+    // the settle; re-pose it for the one step that lets the camera adopt the
+    // pose again (the scene state is untouched).
+    pinFighter(player, 32, -22.5, defuser.pos.x, defuser.pos.z);
+    player.pitch = -0.06;
+    settle(1);
+    hud.hideBanner();
   } else if (name === 'plant') {
     givePlayer('vk7');
     G.wins = [5, 4];
