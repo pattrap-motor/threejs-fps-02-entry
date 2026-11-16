@@ -36,8 +36,9 @@ site, `B` opens the buy menu.
   `vendor/makefun-threejs.ts`.
 
 `?demo=1` runs an attract match with a bot driving the player's body;
-`?shot=cover|buy|fight|plant&seed=N` stages the screenshot scenes listed in
-`shots.json`.
+`?shot=cover|buy|fight|plant|defuse&seed=N` stages the screenshot scenes listed
+in `shots.json` — each one a real scene played by the game's own systems
+(staged gunfights, a live plant, a Warden mid-defuse), never a painted frame.
 
 MIT licensed (see `LICENSE`). three.js is vendored under its own license in
 `game/vendor/three/`.
